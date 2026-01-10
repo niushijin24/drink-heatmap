@@ -1,27 +1,39 @@
-# 阿里云部署指南 (Linux)
+# 阿里云部署指南 (Linux) - 使用 uv
 
-本指南假设您使用的是标准的 Linux 发行版（例如 Ubuntu 22.04 或 CentOS 7/8）。
+推荐使用 `uv` 来管理 Python 环境，它可以自动安装所需的 Python 版本 (3.12)，无需手动编译。
 
 ## 1. 准备工作
 
-通过 SSH 连接到您的服务器：
+### 安装 uv
 ```bash
-ssh root@your_server_ip
+# 安装 uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 使 uv 生效 (或者重新登录)
+source $HOME/.cargo/env
 ```
 
-### 安装核心依赖
+### 安装核心依赖 (Git, Redis, Nginx)
 ```bash
-# 更新软件包列表
-sudo apt update && sudo apt upgrade -y
+# 如果是 Ubuntu/Debian
+sudo apt update
+sudo apt install -y git redis-server nginx
 
-# 安装 git, redis, nginx 和 python3-venv
-sudo apt install -y git redis-server nginx python3-pip python3-venv
+# 如果是 CentOS/Alibaba Cloud Linux
+sudo yum install -y git redis nginx
+sudo systemctl start redis
+sudo systemctl enable redis
 ```
 
-### 安装 Node.js (用于构建前端)
+### 安装 Node.js (构建前端)
 ```bash
+# Ubuntu
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt install -y nodejs
+
+# CentOS
+curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+sudo yum install -y nodejs
 ```
 
 ## 2. 克隆代码仓库
@@ -33,20 +45,17 @@ cd drink-heatmap
 
 ## 3. 后端部署
 
-### 设置 Python 环境
-```bash
-# 创建虚拟环境
-python3 -m venv venv
-source venv/bin/activate
+### 使用 uv 初始化环境
+`uv` 会自动下载 `pyproject.toml` 中指定的 Python 3.12。
 
-# 安装依赖
-pip install -r requirements.txt 
-# 或者如果还没有生成 requirements.txt，可以手动安装：
-pip install fastapi uvicorn redis pydantic
+```bash
+# 同步依赖 (会自动创建虚拟环境并安装 Python 3.12)
+uv sync
 ```
 
 ### 创建 Systemd 服务
-创建一个服务文件以保持后端持续运行：
+**注意**：`uv` 的虚拟环境通常在项目目录下的 `.venv` 中。
+
 `sudo nano /etc/systemd/system/drink-backend.service`
 
 ```ini
@@ -57,8 +66,10 @@ After=network.target
 [Service]
 User=root
 WorkingDirectory=/opt/drink-heatmap
-ExecStart=/opt/drink-heatmap/venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000
+# 使用 uv run 来启动，或者直接指向虚拟环境中的 uvicorn
+ExecStart=/opt/drink-heatmap/.venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000
 Restart=always
+Environment="PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin"
 
 [Install]
 WantedBy=multi-user.target
@@ -79,24 +90,21 @@ cd frontend
 npm install
 npm run build
 ```
-执行完毕后会生成一个 `dist` 文件夹。
 
 ### 配置 Nginx
-编辑默认配置文件：`sudo nano /etc/nginx/sites-available/default`
+`sudo nano /etc/nginx/sites-available/default` (Ubuntu) 或 `/etc/nginx/nginx.conf` (CentOS)
 
 ```nginx
 server {
     listen 80;
-    server_name your_domain_or_ip; # 替换为您的域名或 IP 地址
+    server_name _; 
 
-    # 前端静态文件
     location / {
         root /opt/drink-heatmap/frontend/dist;
         index index.html;
         try_files $uri $uri/ /index.html;
     }
 
-    # 代理 API 请求到后端
     location /api/ {
         proxy_pass http://localhost:8000;
         proxy_set_header Host $host;
@@ -107,8 +115,8 @@ server {
 
 ### 重启 Nginx
 ```bash
+# Ubuntu
+sudo systemctl restart nginx
+# CentOS
 sudo systemctl restart nginx
 ```
-
-## 5. 验证
-在浏览器中访问 `http://your_server_ip`。您应该能看到应用正在运行！
