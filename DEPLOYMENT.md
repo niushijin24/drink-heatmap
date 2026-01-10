@@ -14,7 +14,7 @@ source $HOME/.cargo/env
 ```
 
 ### 安装核心依赖 (Git, Redis, Nginx)
-```bash
+```bashcurl: (35) Encountered end of file
 # 如果是 Ubuntu/Debian
 sudo apt update
 sudo apt install -y git redis-server nginx
@@ -96,7 +96,7 @@ npm run build
 
 ```nginx
 server {
-    listen 80;
+    listen 8099;  # 修改这里：监听 8099 端口
     server_name _; 
 
     location / {
